@@ -1,0 +1,35 @@
+{"nl": "List all customers", "sql": "SELECT * FROM customers", "notes": "Simple full-table select"}
+{"nl": "Show all products", "sql": "SELECT * FROM products", "notes": "Simple full-table select"}
+{"nl": "List all orders", "sql": "SELECT * FROM orders", "notes": "Simple full-table select"}
+{"nl": "Show orders placed in the last 30 days", "sql": "SELECT * FROM orders WHERE created_at >= date('now', '-30 days')", "notes": "Date window example"}
+{"nl": "Find the top 5 products by price", "sql": "SELECT * FROM products ORDER BY price DESC LIMIT 5", "notes": "Top-N with sorting"}
+{"nl": "Count of orders where status equals shipped", "sql": "SELECT COUNT(*) AS count FROM orders WHERE status = 'shipped'", "notes": "Count with filter"}
+{"nl": "Average order amount", "sql": "SELECT AVG(total_amount) AS avg_total_amount FROM orders", "notes": "Simple aggregation"}
+{"nl": "List products priced above 100", "sql": "SELECT * FROM products WHERE price > 100", "notes": "Numeric greater-than filter"}
+{"nl": "Show orders created today", "sql": "SELECT * FROM orders WHERE created_at = date('now')", "notes": "Date equals today"}
+{"nl": "Find customers with gmail.com emails", "sql": "SELECT * FROM customers WHERE email LIKE '%gmail.com%'", "notes": "Text LIKE filter"}
+{"nl": "Total revenue by product category", "sql": "SELECT p.category, SUM(o.total_amount) AS total_revenue FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.category", "notes": "Join + group by aggregation"}
+{"nl": "Orders with quantity between 2 and 5", "sql": "SELECT * FROM orders WHERE quantity BETWEEN 2 AND 5", "notes": "BETWEEN filter"}
+{"nl": "Top 3 customers by total spend", "sql": "SELECT c.name, SUM(o.total_amount) AS total_spend FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.name ORDER BY total_spend DESC LIMIT 3", "notes": "Join + aggregate + top-N"}
+{"nl": "Count of customers", "sql": "SELECT COUNT(*) AS count FROM customers", "notes": "Simple count"}
+{"nl": "List orders sorted by total amount descending", "sql": "SELECT * FROM orders ORDER BY total_amount DESC", "notes": "Sorting descending"}
+{"nl": "Show products in the Electronics category", "sql": "SELECT * FROM products WHERE category = 'Electronics'", "notes": "Equality filter on text column"}
+{"nl": "Find orders with status pending", "sql": "SELECT * FROM orders WHERE status = 'pending'", "notes": "Equality filter on status"}
+{"nl": "Average product price", "sql": "SELECT AVG(price) AS avg_price FROM products", "notes": "Average aggregation"}
+{"nl": "Sum of total amount from orders", "sql": "SELECT SUM(total_amount) AS sum_total_amount FROM orders", "notes": "Sum aggregation"}
+{"nl": "Orders for customer named Alice Johnson", "sql": "SELECT o.* FROM orders o JOIN customers c ON o.customer_id = c.id WHERE c.name = 'Alice Johnson'", "notes": "Join with name filter"}
+{"nl": "List products sorted by price ascending", "sql": "SELECT * FROM products ORDER BY price ASC", "notes": "Sorting ascending"}
+{"nl": "Top 10 orders by total amount", "sql": "SELECT * FROM orders ORDER BY total_amount DESC LIMIT 10", "notes": "Top-N orders"}
+{"nl": "Show orders placed yesterday", "sql": "SELECT * FROM orders WHERE created_at = date('now', '-1 day')", "notes": "Yesterday date filter"}
+{"nl": "Count of products in each category", "sql": "SELECT category, COUNT(*) AS count FROM products GROUP BY category", "notes": "Group by with count"}
+{"nl": "Find products priced below 50", "sql": "SELECT * FROM products WHERE price < 50", "notes": "Less-than numeric filter"}
+{"nl": "Total revenue by customer", "sql": "SELECT c.name, SUM(o.total_amount) AS total_revenue FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.name", "notes": "Join + group by customer"}
+{"nl": "Orders placed this year", "sql": "SELECT * FROM orders WHERE created_at >= date('now', 'start of year')", "notes": "Year-based date filter"}
+{"nl": "Show the most expensive product", "sql": "SELECT * FROM products ORDER BY price DESC LIMIT 1", "notes": "Top-1 pattern"}
+{"nl": "Average order amount for each customer", "sql": "SELECT c.name, AVG(o.total_amount) AS avg_total_amount FROM orders o JOIN customers c ON o.customer_id = c.id GROUP BY c.name", "notes": "Join + average per customer"}
+{"nl": "List orders with total amount greater than 100", "sql": "SELECT * FROM orders WHERE total_amount > 100", "notes": "Numeric filter on amount"}
+{"nl": "Find the top 5 products by total sales", "sql": "SELECT p.name, SUM(o.total_amount) AS total_sales FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.name ORDER BY total_sales DESC LIMIT 5", "notes": "Join + aggregate + top-N on sales"}
+{"nl": "Total revenue by product category in descending order", "sql": "SELECT p.category, SUM(o.total_amount) AS total_revenue FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.category ORDER BY total_revenue DESC", "notes": "Join + group + sort desc"}
+{"nl": "Show customer names and emails", "sql": "SELECT name, email FROM customers", "notes": "Column projection"}
+{"nl": "List product names and prices", "sql": "SELECT name, price FROM products", "notes": "Column projection"}
+{"nl": "Orders for customer named Alice Johnson in 2025", "sql": "SELECT o.* FROM orders o JOIN customers c ON o.customer_id = c.id WHERE c.name = 'Alice Johnson' AND o.created_at >= '2025-01-01' AND o.created_at < '2026-01-01'", "notes": "Join + name + year filter"}

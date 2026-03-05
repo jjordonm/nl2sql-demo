@@ -1,0 +1,21 @@
+id,name,category,price
+1,Laptop Pro,Electronics,1299.99
+2,Wireless Mouse,Electronics,29.99
+3,USB-C Hub,Electronics,49.99
+4,Mechanical Keyboard,Electronics,89.99
+5,Monitor 27in,Electronics,349.99
+6,Desk Lamp,Home Office,45.00
+7,Standing Desk,Home Office,599.00
+8,Ergonomic Chair,Home Office,450.00
+9,Webcam HD,Electronics,79.99
+10,Noise-Cancelling Headphones,Electronics,199.99
+11,Python Cookbook,Books,39.99
+12,Data Science Handbook,Books,54.99
+13,SQL Deep Dive,Books,34.99
+14,Notebook Pack,Stationery,12.99
+15,Gel Pen Set,Stationery,8.99
+16,Backpack,Accessories,75.00
+17,Laptop Sleeve,Accessories,25.00
+18,Cable Organizer,Accessories,15.99
+19,Portable Charger,Electronics,42.00
+20,Whiteboard Markers,Stationery,6.99
