@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from nl2sql.db import DB_PATH, execute_sql, init_db
-from nl2sql.engine import translate
+from nl2sql.engine import translate as translate_rules
+from nl2sql.llm_engine import translate_llm, is_llm_available
 from nl2sql.eval import run_evaluation
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -27,6 +31,30 @@ st.title("🔎 NL → SQL Translator")
 
 with st.sidebar:
     st.header("⚙️ Controls")
+
+    # --- Engine selector ---
+    llm_ready = is_llm_available()
+    engine_options = ["LLM (OpenAI)", "Rule-based"]
+    default_idx = 0 if llm_ready else 1
+
+    engine_choice = st.radio(
+        "Translation engine",
+        engine_options,
+        index=default_idx,
+        help="LLM uses OpenAI API (requires OPENAI_API_KEY). Rule-based uses local pattern matching.",
+    )
+    use_llm = engine_choice == "LLM (OpenAI)"
+
+    if use_llm and not llm_ready:
+        st.warning("⚠️ OPENAI_API_KEY not set. Add it to `.env` or set as environment variable.")
+        use_llm = False
+
+    if use_llm:
+        st.caption("🤖 Using LLM engine")
+    else:
+        st.caption("📏 Using rule-based engine")
+
+    st.divider()
 
     # --- Initialise / Reset DB ---
     if st.button("Initialize DB", help="Create or recreate the SQLite database with seed data"):
@@ -66,8 +94,8 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "**Note:** This is a rule-based demo. Translations may be "
-        "incomplete or inaccurate.  All data is synthetic."
+        "**Note:** Translations may be incomplete or inaccurate. "
+        "All data is synthetic."
     )
 
 # ---------------------------------------------------------------------------
@@ -105,7 +133,10 @@ nl_input = st.text_input(
 
 if st.button("Generate SQL", type="primary") and nl_input:
     try:
-        sql = translate(nl_input)
+        if use_llm:
+            sql = translate_llm(nl_input)
+        else:
+            sql = translate_rules(nl_input)
     except Exception as exc:
         st.error(f"Translation failed: {exc}")
         st.stop()
@@ -127,6 +158,6 @@ if st.button("Generate SQL", type="primary") and nl_input:
 
 st.markdown("---")
 st.caption(
-    "NL2SQL Demo · Rule-based translator · Synthetic data · "
+    "NL2SQL Demo · LLM + Rule-based translator · Synthetic data · "
     "Not for production use."
 )
