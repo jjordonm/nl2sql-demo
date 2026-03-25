@@ -1,107 +1,160 @@
 """
-schema.py – Fake schema definition and introspection helpers.
+schema.py - Schema definitions auto-loaded from the Snowflake column metadata CSV.
 
-This module describes the demo database schema (customers, products, orders)
-and exposes helper functions for looking up valid table names, column names,
-and join relationships.  The engine uses these to whitelist identifiers and
-avoid SQL injection.
+Instead of hard-coding table definitions, this module parses
+``data/snowflake_table_columns.csv`` at import time and builds
+``TABLES``, ``JOIN_RELATIONS``, and helper functions dynamically.
 
-To extend the schema
----------------------
-1. Add a new ``TableDef`` entry to ``TABLES``.
-2. If the new table can be joined to existing tables, add entries in
-   ``JOIN_RELATIONS``.
-3. Re-seed the database (``nl2sql.db.init_db(force=True)``).
+The CSV is the single source of truth for the schema.
 """
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
-# Table / column definitions
+# Paths
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCHEMA_CSV = _PROJECT_ROOT / "data" / "snowflake_table_columns.csv"
+
+# Snowflake fully-qualified prefix used in the source data.
+DATABASE = "COLLINS_ANALYTICS"
+SCHEMA_NAME = "COL_PUBLISHED"
+
+
+# ---------------------------------------------------------------------------
+# Data structures
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class TableDef:
-    """Immutable description of a single database table."""
-
+class ColumnDef:
+    """Description of a single column."""
     name: str
-    columns: tuple[str, ...]
-    # Aliases a user might say that should resolve to this table.
-    aliases: tuple[str, ...] = field(default_factory=tuple)
+    data_type: str          # TEXT, NUMBER, FLOAT, DATE, TIMESTAMP_LTZ, etc.
+    ordinal_position: int
 
 
-# Master list of tables in the demo schema.
-TABLES: dict[str, TableDef] = {
-    "customers": TableDef(
-        name="customers",
-        columns=("id", "name", "email", "created_at"),
-        aliases=("customer",),
-    ),
-    "products": TableDef(
-        name="products",
-        columns=("id", "name", "category", "price"),
-        aliases=("product",),
-    ),
-    "orders": TableDef(
-        name="orders",
-        columns=(
-            "id",
-            "customer_id",
-            "product_id",
-            "quantity",
-            "total_amount",
-            "status",
-            "created_at",
-        ),
-        aliases=("order",),
-    ),
-}
+@dataclass
+class TableDef:
+    """Description of a single database table."""
+    name: str                       # e.g. "AIML_OPEN_PURCHASE_ORDERS"
+    columns: dict[str, ColumnDef]   # column_name -> ColumnDef (ordered)
+    fq_name: str = ""              # Fully-qualified Snowflake name
 
-# ---------------------------------------------------------------------------
-# Join relationships  (table_a, table_b) → (a_col, b_col)
-# ---------------------------------------------------------------------------
+    @property
+    def column_names(self) -> tuple[str, ...]:
+        return tuple(self.columns.keys())
+
+    @property
+    def date_columns(self) -> list[str]:
+        return [c.name for c in self.columns.values()
+                if c.data_type in ("DATE", "TIMESTAMP_LTZ", "TIMESTAMP_NTZ")]
+
+    @property
+    def numeric_columns(self) -> list[str]:
+        return [c.name for c in self.columns.values()
+                if c.data_type in ("NUMBER", "FLOAT")]
+
+    @property
+    def text_columns(self) -> list[str]:
+        return [c.name for c in self.columns.values()
+                if c.data_type == "TEXT"]
+
 
 @dataclass(frozen=True)
 class JoinRelation:
     """Describes how two tables can be joined."""
-
     left_table: str
     right_table: str
     left_col: str
     right_col: str
 
 
+# ---------------------------------------------------------------------------
+# Parse CSV -> TABLES dict
+# ---------------------------------------------------------------------------
+
+def _load_tables_from_csv(csv_path: Path) -> dict[str, TableDef]:
+    """Read the Snowflake metadata CSV and build a dict of TableDefs."""
+    tables: dict[str, TableDef] = {}
+
+    if not csv_path.exists():
+        return tables
+
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            tname = row["object_name"]
+            col_name = row["column_name"]
+            dtype = row["data_type"]
+            ordinal = int(row["ordinal_position"])
+            fq = f"{row['database']}.{row['schema']}.{tname}"
+
+            if tname not in tables:
+                tables[tname] = TableDef(name=tname, columns={}, fq_name=fq)
+
+            tables[tname].columns[col_name] = ColumnDef(
+                name=col_name, data_type=dtype, ordinal_position=ordinal
+            )
+
+    return tables
+
+
+TABLES: dict[str, TableDef] = _load_tables_from_csv(SCHEMA_CSV)
+
+
+# ---------------------------------------------------------------------------
+# Join relations (curated from the SAP/Snowflake schema)
+# ---------------------------------------------------------------------------
+
 JOIN_RELATIONS: list[JoinRelation] = [
-    JoinRelation("orders", "customers", "customer_id", "id"),
-    JoinRelation("orders", "products", "product_id", "id"),
+    # Business views
+    JoinRelation("AIML_OPEN_PURCHASE_ORDERS", "CORE_PLANT", "PLANT_ID", "PLANT_ID"),
+    JoinRelation("EDW_INVENTORY_SEGMENTATION_SNAPSHOT", "CORE_PLANT", "PLANT_ID", "PLANT_ID"),
+    # SAP PO header -> PO item -> schedule line
+    JoinRelation("EKKO", "EKPO", "EBELN", "EBELN"),
+    JoinRelation("EKPO", "EKET", "EBELN", "EBELN"),
+    JoinRelation("EKES", "EKPO", "EBELN", "EBELN"),
+    # PO -> vendor
+    JoinRelation("EKKO", "LFA1", "LIFNR", "LIFNR"),
+    # Material master chain
+    JoinRelation("MARA", "MAKT", "MATNR", "MATNR"),
+    JoinRelation("MARA", "MARC", "MATNR", "MATNR"),
+    JoinRelation("MARC", "MARD", "MATNR", "MATNR"),
+    JoinRelation("MARC", "MBEW", "MATNR", "MATNR"),
+    # Plant master
+    JoinRelation("T001W", "MARC", "WERKS", "WERKS"),
+    # Company code
+    JoinRelation("T001", "EKKO", "BUKRS", "BUKRS"),
+    JoinRelation("T001K", "MBEW", "BWKEY", "BWKEY"),
+    # Reference tables
+    JoinRelation("T023T", "EKPO", "MATKL", "MATKL"),
+    JoinRelation("T024", "EKKO", "EKGRP", "EKGRP"),
+    # Delivery
+    JoinRelation("LIPS", "EKPO", "VGBEL", "EBELN"),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Convenience helpers (used by engine.py)
+# Key business tables (most likely to be queried by users)
 # ---------------------------------------------------------------------------
 
-# Column aliases: what the user might say → (table, real_column)
-# Extend this mapping when you add new user-facing names.
-COLUMN_ALIASES: dict[str, tuple[str, str]] = {
-    "customer name": ("customers", "name"),
-    "customer email": ("customers", "email"),
-    "product name": ("products", "name"),
-    "product price": ("products", "price"),
-    "product category": ("products", "category"),
-    "category": ("products", "category"),
-    "price": ("products", "price"),
-    "total amount": ("orders", "total_amount"),
-    "total_amount": ("orders", "total_amount"),
-    "order status": ("orders", "status"),
-    "status": ("orders", "status"),
-    "quantity": ("orders", "quantity"),
-    "email": ("customers", "email"),
-}
+KEY_TABLES = [
+    "AIML_OPEN_PURCHASE_ORDERS",
+    "CORE_PLANT",
+    "EDW_INVENTORY_SEGMENTATION_SNAPSHOT",
+    "EDW_MATL_LOC_DEMAND_INFO",
+]
 
+
+# ---------------------------------------------------------------------------
+# Convenience helpers
+# ---------------------------------------------------------------------------
 
 def all_table_names() -> set[str]:
     """Return the set of valid table names."""
@@ -112,32 +165,38 @@ def all_column_names() -> set[str]:
     """Return every column across all tables."""
     cols: set[str] = set()
     for tbl in TABLES.values():
-        cols.update(tbl.columns)
+        cols.update(tbl.columns.keys())
     return cols
 
 
 def columns_for(table: str) -> tuple[str, ...]:
-    """Return columns belonging to *table*, or empty tuple if unknown."""
+    """Return column names for *table*, or empty tuple if unknown."""
     tdef = TABLES.get(table)
-    return tdef.columns if tdef else ()
-
-
-def resolve_table_alias(token: str) -> str | None:
-    """Map a token to a canonical table name, or ``None`` if unrecognised."""
-    token_lower = token.lower()
-    if token_lower in TABLES:
-        return token_lower
-    for tname, tdef in TABLES.items():
-        if token_lower in tdef.aliases:
-            return tname
-    return None
+    return tdef.column_names if tdef else ()
 
 
 def find_join(left: str, right: str) -> JoinRelation | None:
-    """Return the join relation between two tables, or ``None``."""
+    """Return the join relation between two tables, or None."""
     for jr in JOIN_RELATIONS:
-        if (jr.left_table == left and jr.right_table == right) or (
-            jr.left_table == right and jr.right_table == left
-        ):
+        if (jr.left_table == left and jr.right_table == right) or \
+           (jr.left_table == right and jr.right_table == left):
             return jr
     return None
+
+
+def schema_for_llm() -> str:
+    """Return a complete schema description optimised for the LLM prompt.
+
+    Shows all columns with types so the LLM can write accurate SQL.
+    """
+    lines: list[str] = []
+    for tname, tdef in TABLES.items():
+        cols = [f"{c.name} {c.data_type}" for c in tdef.columns.values()]
+        lines.append(f"{tname}({', '.join(cols)})")
+
+    lines.append("")
+    lines.append("Join relationships:")
+    for jr in JOIN_RELATIONS:
+        lines.append(f"  {jr.left_table}.{jr.left_col} = {jr.right_table}.{jr.right_col}")
+
+    return "\n".join(lines)

@@ -108,18 +108,20 @@ if not DB_PATH.exists():
 
 # Example prompts
 EXAMPLES = [
-    "List all customers",
-    "Show orders placed in the last 30 days",
-    "Find the top 5 products by total sales",
-    "Count of orders where status equals shipped",
-    "Average order amount for each customer",
-    "Orders for customer named Alice Johnson in 2025",
-    "Total revenue by product category in descending order",
-    "List products priced above 100 sorted by price desc",
-    "Top 3 customers by total spend",
-    "Orders with quantity between 2 and 5",
-    "Show orders created today",
-    "Find customers with gmail.com emails",
+    "List all open purchase orders",
+    "Show all plants",
+    "Top 5 purchase orders by open value in USD",
+    "Count of purchase orders by vendor",
+    "Total open value by plant",
+    "Show purchase orders for vendor Honeywell Aerospace",
+    "Show plants in the US",
+    "Count of materials by segment",
+    "Show purchase orders with open quantity greater than 100",
+    "Total open value by material group",
+    "Average lead time by plant",
+    "Top 3 plants by total open purchase order value",
+    "Show materials with lifecycle Active",
+    "Show purchase orders with exception message Expedite",
 ]
 
 with st.expander("💡 Example prompts you can try"):

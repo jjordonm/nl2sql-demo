@@ -1,6 +1,4 @@
-"""
-tests/test_eval.py – Tests for the golden-SQL evaluator.
-"""
+"""tests/test_eval.py - Tests for the golden-SQL evaluator."""
 
 from __future__ import annotations
 
@@ -10,10 +8,6 @@ import pytest
 
 from nl2sql.db import init_db
 from nl2sql.eval import EvalReport, load_golden, run_evaluation
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 _DB: Path | None = None
 
@@ -25,13 +19,7 @@ def _setup_db(tmp_path_factory: pytest.TempPathFactory) -> None:
     init_db(db_path=_DB)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
 def test_load_golden() -> None:
-    """Golden JSONL should load as a non-empty list of dicts."""
     examples = load_golden()
     assert len(examples) >= 20
     for ex in examples:
@@ -40,7 +28,6 @@ def test_load_golden() -> None:
 
 
 def test_run_evaluation_returns_report() -> None:
-    """Evaluator should run and return an EvalReport with metrics."""
     report = run_evaluation(db_path=_DB)
     assert isinstance(report, EvalReport)
     assert report.total >= 20
@@ -49,7 +36,6 @@ def test_run_evaluation_returns_report() -> None:
 
 
 def test_report_summary_is_string() -> None:
-    """The summary method should produce a readable string."""
     report = run_evaluation(db_path=_DB, mode="string")
     summary = report.summary()
     assert isinstance(summary, str)
@@ -57,7 +43,6 @@ def test_report_summary_is_string() -> None:
 
 
 def test_evaluation_string_mode() -> None:
-    """String-comparison mode should also produce a valid report."""
     report = run_evaluation(db_path=_DB, mode="string")
     assert isinstance(report, EvalReport)
     assert report.total >= 20

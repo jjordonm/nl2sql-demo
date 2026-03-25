@@ -117,33 +117,38 @@ Tests use a temporary SQLite database so they don't interfere with your main
 
 | # | Natural language input |
 |---|------------------------|
-| 1 | List all customers |
-| 2 | Show orders placed in the last 30 days |
-| 3 | Find the top 5 products by total sales |
-| 4 | Count of orders where status equals shipped |
-| 5 | Average order amount for each customer |
-| 6 | Orders for customer named Alice Johnson in 2025 |
-| 7 | Total revenue by product category in descending order |
-| 8 | List products priced above 100 sorted by price desc |
-| 9 | Top 3 customers by total spend |
-| 10 | Orders with quantity between 2 and 5 |
-| 11 | Show orders created today |
-| 12 | Find customers with gmail.com emails |
-| 13 | Average product price |
-| 14 | Show the most expensive product |
-| 15 | Count of products in each category |
+| 1 | List all open purchase orders |
+| 2 | Show all plants |
+| 3 | Top 5 purchase orders by open value in USD |
+| 4 | Count of purchase orders by vendor |
+| 5 | Total open value by plant |
+| 6 | Show purchase orders for vendor Honeywell Aerospace |
+| 7 | Show plants in the US |
+| 8 | Count of materials by segment |
+| 9 | Show purchase orders with open quantity greater than 100 |
+| 10 | Total open value by material group |
+| 11 | Average lead time by plant |
+| 12 | Top 3 plants by total open purchase order value |
+| 13 | Show materials with lifecycle Active |
+| 14 | Show purchase orders with exception message Expedite |
 
 ---
 
 ## Schema
 
+The schema is auto-loaded from `data/snowflake_table_columns.csv` (28 tables
+from COLLINS_ANALYTICS.COL_PUBLISHED). Key business tables:
+
 ```
-customers(id, name, email, created_at)
-products(id, name, category, price)
-orders(id, customer_id, product_id, quantity, total_amount, status, created_at)
+AIML_OPEN_PURCHASE_ORDERS  (47 columns) - Open PO lines with vendor, plant, material, qty, value
+CORE_PLANT                 (23 columns) - Plant master data with location info
+EDW_INVENTORY_SEGMENTATION_SNAPSHOT (113 columns) - Inventory snapshots
+EDW_MATL_LOC_DEMAND_INFO   (24 columns) - Material demand information
 ```
 
-Seed data: 20 customers, 20 products, 60 orders — all synthetic.
+Plus 24 SAP raw tables (EKKO, EKPO, MARA, MARC, LFA1, etc.).
+
+Seed data: 10 plants, 30 POs, 40 inventory snapshots, 25 demand records - all synthetic dummy values.
 
 ---
 
@@ -166,6 +171,14 @@ All configuration is through environment variables — no code changes needed.
 Edit the `_SYSTEM_PROMPT` in `nl2sql/llm_engine.py` to adjust the
 instructions, add few-shot examples, or change the output format.
 
+### Updating the schema
+
+1. Replace `data/snowflake_table_columns.csv` with an updated export.
+2. The schema is parsed automatically at import time - no code changes needed.
+3. Add join relationships in `nl2sql/schema.py` if applicable.
+4. Regenerate seed data: `python generate_seed_data.py`
+5. Re-initialise: click **Initialize DB** or call `init_db(force=True)`.
+
 ### Adding new rules to the rule-based engine
 
 1. Open `nl2sql/engine.py`.
@@ -178,10 +191,10 @@ instructions, add few-shot examples, or change the output format.
 
 ### Extending the schema
 
-1. Add a `TableDef` to `TABLES` in `nl2sql/schema.py`.
-2. Add join relationships in `JOIN_RELATIONS` if applicable.
-3. Create a seed CSV in `data/seed/`.
-4. Add DDL in `nl2sql/db.py._DDL`.
+1. Update `data/snowflake_table_columns.csv` with the new table/column metadata.
+2. Add join relationships in `JOIN_RELATIONS` in `nl2sql/schema.py` if applicable.
+3. Add seed data generation logic in `generate_seed_data.py`.
+4. Run `python generate_seed_data.py` to create CSVs.
 5. Re-initialise: click **Initialize DB** or call `init_db(force=True)`.
 
 ---

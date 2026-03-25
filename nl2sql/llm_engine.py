@@ -1,5 +1,5 @@
 """
-llm_engine.py – LLM-powered Natural Language → SQL translator.
+llm_engine.py - LLM-powered Natural Language to SQL translator.
 
 Uses the OpenAI Chat Completions API (compatible with OpenAI, Azure OpenAI,
 and any OpenAI-compatible endpoint) to translate natural-language questions
@@ -7,9 +7,9 @@ into SQL.
 
 Configuration (via environment variables or .env file)
 ------------------------------------------------------
-OPENAI_API_KEY      – Required. Your OpenAI (or Azure) API key.
-OPENAI_MODEL        – Optional. Model name (default: "gpt-4o-mini").
-OPENAI_BASE_URL     – Optional. Custom base URL for Azure OpenAI or
+OPENAI_API_KEY      - Required. Your OpenAI (or Azure) API key.
+OPENAI_MODEL        - Optional. Model name (default: "gpt-4o-mini").
+OPENAI_BASE_URL     - Optional. Custom base URL for Azure OpenAI or
                       compatible providers.
 
 The schema definition is injected into the system prompt so the LLM knows
@@ -23,44 +23,40 @@ import re
 
 from openai import OpenAI
 
-from nl2sql.schema import TABLES, JOIN_RELATIONS, all_table_names, all_column_names
+from nl2sql.schema import TABLES, JOIN_RELATIONS, KEY_TABLES, schema_for_llm
 
 # ---------------------------------------------------------------------------
-# Schema prompt builder
+# System prompt (built at import time from the schema CSV)
 # ---------------------------------------------------------------------------
 
-def _build_schema_description() -> str:
-    """Build a human-readable schema description for the system prompt."""
-    lines: list[str] = []
-    for tname, tdef in TABLES.items():
-        cols = ", ".join(tdef.columns)
-        lines.append(f"  {tname}({cols})")
-
-    lines.append("")
-    lines.append("  Relationships:")
-    for jr in JOIN_RELATIONS:
-        lines.append(
-            f"    {jr.left_table}.{jr.left_col} → {jr.right_table}.{jr.right_col}"
-        )
-
-    return "\n".join(lines)
-
+_SCHEMA_TEXT = schema_for_llm()
 
 _SYSTEM_PROMPT = f"""\
-You are a SQL query generator for a SQLite database with the following schema:
+You are a SQL query generator for a SQLite database that mirrors a Snowflake
+analytics schema.  The database is: COLLINS_ANALYTICS.COL_PUBLISHED
 
-{_build_schema_description()}
+Schema (table_name(column_name data_type, ...)):
+
+{_SCHEMA_TEXT}
+
+Key business tables (most commonly queried):
+- AIML_OPEN_PURCHASE_ORDERS: Open purchase orders with vendor, plant, material, quantity, value and delivery dates.
+- CORE_PLANT: Plant master data with location info (city, region, country).
+- EDW_INVENTORY_SEGMENTATION_SNAPSHOT: Inventory snapshots including on-hand, excess, demand, lifecycle, segmentation.
+- EDW_MATL_LOC_DEMAND_INFO: Material demand information by plant.
 
 Rules:
-- Output ONLY a single valid SQLite SELECT statement. No explanation, no markdown fences, no comments.
+- Output ONLY a single valid SQLite SELECT statement.  No explanation, no markdown fences, no comments.
 - Use SQLite date functions (e.g. date('now'), date('now', '-30 days')) for date-relative queries.
 - Use single quotes for string literals.
-- For "today" use date('now'). Current date context is provided by the user implicitly.
-- When joining tables, use short aliases (e.g. o for orders, c for customers, p for products).
+- For "today" use date('now').
+- When joining tables, use short aliases (e.g. po for AIML_OPEN_PURCHASE_ORDERS, p for CORE_PLANT).
 - When asked for "top N" use ORDER BY ... DESC LIMIT N.
 - For text search use LIKE with % wildcards.
-- Only produce SELECT queries — never INSERT, UPDATE, DELETE, DROP, etc.
+- Only produce SELECT queries.
 - If the question cannot be answered from the schema, respond with: SELECT 'Query not supported' AS error
+- Column and table names are UPPER CASE.
+- Monetary values in USD use OPEN_VALUE_IN_USD, STANDARD_PRICE_USD, and similar _USD columns.
 """
 
 
