@@ -33,7 +33,7 @@ _SCHEMA_TEXT = schema_for_llm()
 
 _SYSTEM_PROMPT = f"""\
 You are a SQL query generator for a SQLite database that mirrors a Snowflake
-analytics schema.  The database is: COLLINS_ANALYTICS.COL_PUBLISHED
+analytics schema.  The database is: DEMO_ANALYTICS.DEMO_PUBLISHED
 
 Schema (table_name(column_name data_type, ...)):
 

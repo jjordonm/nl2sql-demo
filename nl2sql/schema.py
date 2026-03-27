@@ -23,8 +23,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_CSV = _PROJECT_ROOT / "data" / "snowflake_table_columns.csv"
 
 # Snowflake fully-qualified prefix used in the source data.
-DATABASE = "COLLINS_ANALYTICS"
-SCHEMA_NAME = "COL_PUBLISHED"
+DATABASE = "DEMO_ANALYTICS"
+SCHEMA_NAME = "DEMO_PUBLISHED"
 
 
 # ---------------------------------------------------------------------------

@@ -137,7 +137,7 @@ Tests use a temporary SQLite database so they don't interfere with your main
 ## Schema
 
 The schema is auto-loaded from `data/snowflake_table_columns.csv` (28 tables
-from COLLINS_ANALYTICS.COL_PUBLISHED). Key business tables:
+from DEMO_ANALYTICS.DEMO_PUBLISHED). Key business tables:
 
 ```
 AIML_OPEN_PURCHASE_ORDERS  (47 columns) - Open PO lines with vendor, plant, material, qty, value
