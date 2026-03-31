@@ -34,19 +34,23 @@ with st.sidebar:
 
     # --- Engine selector ---
     llm_ready = is_llm_available()
-    engine_options = ["LLM (OpenAI)", "Rule-based"]
+    engine_options = ["LLM (Azure OpenAI)", "Rule-based"]
     default_idx = 0 if llm_ready else 1
 
     engine_choice = st.radio(
         "Translation engine",
         engine_options,
         index=default_idx,
-        help="LLM uses OpenAI API (requires OPENAI_API_KEY). Rule-based uses local pattern matching.",
+        help="LLM uses Azure OpenAI with Entra ID (requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT, plus az login or managed identity). Rule-based uses local pattern matching.",
     )
-    use_llm = engine_choice == "LLM (OpenAI)"
+    use_llm = engine_choice == "LLM (Azure OpenAI)"
 
     if use_llm and not llm_ready:
-        st.warning("⚠️ OPENAI_API_KEY not set. Add it to `.env` or set as environment variable.")
+        st.warning(
+            "⚠️ AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_DEPLOYMENT not set. "
+            "Add them to `.env` or set them as environment variables. "
+            "Also authenticate with Azure (for example: az login)."
+        )
         use_llm = False
 
     if use_llm:
