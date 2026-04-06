@@ -1,16 +1,19 @@
 """
 llm_engine.py - LLM-powered Natural Language to SQL translator.
 
-Uses the OpenAI Chat Completions API (compatible with OpenAI, Azure OpenAI,
-and any OpenAI-compatible endpoint) to translate natural-language questions
-into SQL.
+Uses the Azure OpenAI Chat Completions API to translate natural-language
+questions into SQL.
 
 Configuration (via environment variables or .env file)
 ------------------------------------------------------
-OPENAI_API_KEY      - Required. Your OpenAI (or Azure) API key.
-OPENAI_MODEL        - Optional. Model name (default: "gpt-4o-mini").
-OPENAI_BASE_URL     - Optional. Custom base URL for Azure OpenAI or
-                      compatible providers.
+AZURE_OPENAI_ENDPOINT      - Required. Endpoint URL, e.g.
+                             https://<resource>.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT    - Required. Azure OpenAI deployment name.
+AZURE_OPENAI_API_VERSION   - Optional. API version
+                             (default: "2024-02-01").
+
+Authentication uses Microsoft Entra ID (AAD) via DefaultAzureCredential.
+For local development, run: az login
 
 The schema definition is injected into the system prompt so the LLM knows
 which tables/columns are available.
@@ -21,7 +24,8 @@ from __future__ import annotations
 import os
 import re
 
-from openai import OpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
 
 from nl2sql.schema import TABLES, JOIN_RELATIONS, KEY_TABLES, schema_for_llm
 
@@ -81,38 +85,52 @@ def translate_llm(nl: str) -> str:
     Raises
     ------
     ValueError
-        If the API key is not configured.
+        If required Azure OpenAI settings are missing.
     RuntimeError
         If the LLM call fails.
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+
+    if not endpoint:
         raise ValueError(
-            "OPENAI_API_KEY is not set. Add it to your .env file or "
+            "AZURE_OPENAI_ENDPOINT is not set. Add it to your .env file or "
+            "set it as an environment variable."
+        )
+    if not deployment:
+        raise ValueError(
+            "AZURE_OPENAI_DEPLOYMENT is not set. Add it to your .env file or "
             "set it as an environment variable."
         )
 
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    base_url = os.getenv("OPENAI_BASE_URL")  # None → default OpenAI endpoint
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
 
-    client_kwargs: dict = {"api_key": api_key}
-    if base_url:
-        client_kwargs["base_url"] = base_url
-
-    client = OpenAI(**client_kwargs)
+    client = AzureOpenAI(
+        azure_endpoint=endpoint,
+        api_version=api_version,
+        azure_ad_token_provider=token_provider,
+    )
 
     try:
         response = client.chat.completions.create(
-            model=model,
+            model=deployment,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": nl},
             ],
             temperature=0.0,
-            max_tokens=512,
+            max_completion_tokens=512,
         )
     except Exception as exc:
-        raise RuntimeError(f"LLM API call failed: {exc}") from exc
+        raise RuntimeError(
+            "LLM API call failed. Ensure your Azure identity can access the "
+            "Azure OpenAI resource (for local dev, run 'az login'). "
+            f"Details: {exc}"
+        ) from exc
 
     raw = response.choices[0].message.content or ""
     sql = _clean_sql(raw)
@@ -143,5 +161,8 @@ def _clean_sql(raw: str) -> str:
 
 
 def is_llm_available() -> bool:
-    """Return True if the LLM engine is configured (API key is set)."""
-    return bool(os.getenv("OPENAI_API_KEY"))
+    """Return True if required Azure OpenAI settings are configured."""
+    return bool(
+        os.getenv("AZURE_OPENAI_ENDPOINT")
+        and os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    )

@@ -1,7 +1,7 @@
 # NL2SQL Demo
 
 A self-contained demo that translates **natural language** into **SQL queries**
-using an **LLM** (OpenAI) by default, with a **rule-based fallback** engine,
+using an **LLM** (Azure OpenAI) by default, with a **rule-based fallback** engine,
 a Streamlit UI, and optional golden-SQL evaluation.
 
 > **Status:** Demo / educational project – not for production use.  
@@ -46,7 +46,7 @@ a Streamlit UI, and optional golden-SQL evaluation.
 |--------|---------|
 | `nl2sql/schema.py` | Defines tables, columns, aliases, and join relationships. Acts as the single source of truth the engine validates against. |
 | `nl2sql/db.py` | Creates the SQLite database, runs DDL, and loads seed CSVs. Provides `execute_sql()` for safe read-only queries. |
-| `nl2sql/llm_engine.py` | Sends NL + schema to OpenAI Chat Completions API. Default engine. |
+| `nl2sql/llm_engine.py` | Sends NL + schema to Azure OpenAI Chat Completions API (AAD auth). Default engine. |
 | `nl2sql/engine.py` | Tokenises the NL input, detects tables/columns/filters/aggregations/sorting, builds a query plan, and assembles safe SQL. Fallback engine. |
 | `nl2sql/eval.py` | Loads golden examples, runs the engine, and compares results (string or result-set mode). Produces an accuracy report. |
 | `app.py` | Streamlit single-page app tying everything together. |
@@ -73,7 +73,7 @@ pip install -r requirements.txt
 
 # 4. Configure the LLM (default engine)
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Edit .env and add your Azure OpenAI settings
 
 # 5. Launch the app
 streamlit run app.py
@@ -86,19 +86,25 @@ sidebar to reset it at any time.
 
 | Mode | How it works | Requires |
 |------|-------------|----------|
-| **LLM (default)** | Sends the NL question + schema to OpenAI’s Chat Completions API | `OPENAI_API_KEY` in `.env` |
+| **LLM (default)** | Sends the NL question + schema to Azure OpenAI Chat Completions API using Entra ID (AAD) | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` in `.env` + Azure login |
 | **Rule-based** | Local pattern-matching, no network calls | Nothing — works offline |
 
-The sidebar has a radio toggle to switch between engines. If no API key is
-configured, the app automatically falls back to rule-based mode.
+The sidebar has a radio toggle to switch between engines. If Azure OpenAI
+configuration is missing, the app automatically falls back to rule-based mode.
+
+For local development, authenticate first:
+
+```bash
+az login
+```
 
 ### Environment variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | For LLM mode | — | Your OpenAI API key |
-| `OPENAI_MODEL` | No | `gpt-4o-mini` | Model to use |
-| `OPENAI_BASE_URL` | No | — | Custom endpoint (Azure OpenAI, Ollama, etc.) |
+| `AZURE_OPENAI_ENDPOINT` | Yes (LLM mode) | — | Azure OpenAI endpoint URL |
+| `AZURE_OPENAI_DEPLOYMENT` | Yes (LLM mode) | — | Azure OpenAI deployment name |
+| `AZURE_OPENAI_API_VERSION` | No | `2024-02-01` | Azure OpenAI API version |
 
 ---
 
@@ -154,17 +160,17 @@ Seed data: 10 plants, 30 POs, 40 inventory snapshots, 25 demand records - all sy
 
 ## Extensibility
 
-### Changing the LLM provider
+### Configuring the LLM engine
 
-The LLM engine uses the `openai` Python package, which is compatible with:
+The LLM engine uses the `openai` Python package with the AzureOpenAI client.
+Set these variables:
 
-- **OpenAI** – set `OPENAI_API_KEY`
-- **Azure OpenAI** – set `OPENAI_API_KEY` and `OPENAI_BASE_URL`
-- **Local models** (Ollama, LM Studio, vLLM) – set `OPENAI_BASE_URL` to
-  the local endpoint (e.g. `http://localhost:11434/v1`) and `OPENAI_MODEL`
-  to the model name
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_DEPLOYMENT`
+- Optional: `AZURE_OPENAI_API_VERSION`
 
-All configuration is through environment variables — no code changes needed.
+Authentication is via Microsoft Entra ID (AAD) using `DefaultAzureCredential`
+from `azure-identity`.
 
 ### Customising the LLM prompt
 
@@ -207,8 +213,8 @@ instructions, add few-shot examples, or change the output format.
   ambiguous queries. Always review generated SQL.
 - **Rule-based** – The rule-based engine handles common patterns but will
   fail on complex or ambiguous queries.
-- **API costs** – LLM mode makes API calls to OpenAI (or your configured
-  provider). Each query costs a small amount of tokens.
+- **API costs** – LLM mode makes API calls to Azure OpenAI. Each query costs
+  a small amount of tokens.
 - **Synthetic data** – All names, emails, and transactions are fake. No
   personally identifiable information (PII) is used.
 - **No authentication / authorisation** – The app exposes a raw SQL
