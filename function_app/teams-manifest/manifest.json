@@ -1,0 +1,59 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "{{MICROSOFT_APP_ID}}",
+  "developer": {
+    "name": "NL2SQL Demo",
+    "websiteUrl": "https://github.com/your-org/nl2sql-demo",
+    "privacyUrl": "https://github.com/your-org/nl2sql-demo/blob/main/PRIVACY.md",
+    "termsOfUseUrl": "https://github.com/your-org/nl2sql-demo/blob/main/TERMS.md"
+  },
+  "name": {
+    "short": "NL2SQL Bot",
+    "full": "Natural Language to SQL Query Bot"
+  },
+  "description": {
+    "short": "Ask questions about your data in plain English",
+    "full": "NL2SQL Bot translates natural-language questions into SQL queries, executes them against your analytics database, and returns results with visualization suggestions. Powered by Azure OpenAI."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#4A90D9",
+  "bots": [
+    {
+      "botId": "{{MICROSOFT_APP_ID}}",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
+      "commandLists": [
+        {
+          "scopes": ["personal", "team", "groupChat"],
+          "commands": [
+            {
+              "title": "help",
+              "description": "Show available commands and example queries"
+            },
+            {
+              "title": "history",
+              "description": "Show recent query history"
+            },
+            {
+              "title": "clear history",
+              "description": "Clear conversation history"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": []
+}

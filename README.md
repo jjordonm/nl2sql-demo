@@ -49,7 +49,9 @@ a Streamlit UI, and optional golden-SQL evaluation.
 | `nl2sql/llm_engine.py` | Sends NL + schema to Azure OpenAI Chat Completions API (AAD auth). Default engine. |
 | `nl2sql/engine.py` | Tokenises the NL input, detects tables/columns/filters/aggregations/sorting, builds a query plan, and assembles safe SQL. Fallback engine. |
 | `nl2sql/eval.py` | Loads golden examples, runs the engine, and compares results (string or result-set mode). Produces an accuracy report. |
-| `app.py` | Streamlit single-page app tying everything together. |
+| `nl2sql/visualize.py` | Analyzes query results and suggests the best chart type (bar, line, pie, scatter, area) based on data shape and query intent. |
+| `app.py` | Streamlit chat-style app with history, auto-visualization, and evaluation. |
+| `function_app/` | Azure Functions Bot Framework endpoint for Microsoft Teams integration. |
 
 ---
 
@@ -105,6 +107,71 @@ az login
 | `AZURE_OPENAI_ENDPOINT` | Yes (LLM mode) | — | Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_DEPLOYMENT` | Yes (LLM mode) | — | Azure OpenAI deployment name |
 | `AZURE_OPENAI_API_VERSION` | No | `2024-02-01` | Azure OpenAI API version |
+| `MICROSOFT_APP_ID` | Yes (Teams bot) | — | Bot registration App ID |
+| `MICROSOFT_APP_PASSWORD` | Yes (Teams bot) | — | Bot registration client secret |
+
+---
+
+## Features
+
+### Chat history
+
+The Streamlit UI uses a conversational chat interface (`st.chat_input` + `st.chat_message`). All questions and responses are stored in `st.session_state` and persist across reruns within the same browser session. Use the **Clear history** button in the sidebar to reset.
+
+### Auto-visualization
+
+When **Auto-visualize results** is enabled (default), the app analyzes each query result and automatically renders the most appropriate chart:
+
+| Chart type | When it's used |
+|-----------|----------------|
+| **Bar** | Categorical grouping with numeric values (e.g. "total value by plant") |
+| **Pie** | Small number of categories with distribution keywords (e.g. "breakdown by vendor") |
+| **Line** | Time-series data with trend keywords (e.g. "orders over time") |
+| **Scatter** | Two numeric columns with many rows |
+| **Area** | Time-series with area-style keywords |
+
+The logic lives in `nl2sql/visualize.py` and uses heuristics based on column types, row count, and NL query keywords.
+
+### Microsoft Teams bot
+
+The `function_app/` directory contains a Bot Framework bot deployed as an Azure Function. Users can chat with the NL2SQL agent directly in Microsoft Teams.
+
+#### Teams deployment
+
+1. **Register a bot** in the [Azure Portal](https://portal.azure.com) → Bot Services → Create Azure Bot.
+2. Note the **App ID** and create a **client secret**. Add both to your `.env`:
+
+   ```bash
+   MICROSOFT_APP_ID=your-app-id
+   MICROSOFT_APP_PASSWORD=your-client-secret
+   ```
+
+3. **Deploy the Azure Function:**
+
+   ```bash
+   cd function_app
+   func azure functionapp publish <your-function-app-name>
+   ```
+
+4. **Set the messaging endpoint** in the Azure Bot registration to:
+
+   ```
+   https://<your-function-app-name>.azurewebsites.net/api/messages
+   ```
+
+5. **Install in Teams:**
+   - Edit `function_app/teams-manifest/manifest.json` and replace `{{MICROSOFT_APP_ID}}` with your actual App ID.
+   - Add 192×192 `color.png` and 32×32 `outline.png` icons to the `teams-manifest/` folder.
+   - Zip the manifest folder contents and upload to Teams Admin Center or sideload in Teams.
+
+#### Bot commands
+
+| Command | Description |
+|---------|-------------|
+| *(any question)* | Translates to SQL, executes, and returns results as an Adaptive Card |
+| `help` | Shows available commands and example queries |
+| `history` | Shows recent queries for the conversation |
+| `clear history` | Clears conversation history |
 
 ---
 
