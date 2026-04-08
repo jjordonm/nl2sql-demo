@@ -124,20 +124,25 @@ def _detect_where(text: str, table: str) -> str | None:
     # Vendor name
     m = re.search(r"vendor\s+(?:named?|=|is)\s+['\"]?([^'\"]+)['\"]?", text)
     if m and table == "AIML_OPEN_PURCHASE_ORDERS":
-        val = m.group(1).strip()
+        val = _escape_sql_string(m.group(1).strip())
         clauses.append(f"VEND_NM = '{val}'")
 
     # Plant ID
     m = re.search(r"plant\s+(?:id\s+)?(?:=\s*)?['\"]?(\w+)['\"]?", text)
     if m:
-        val = m.group(1).strip()
+        val = _escape_sql_string(m.group(1).strip())
         if val.upper() not in ("ID", "NAME", "CATEGORY"):
             clauses.append(f"PLANT_ID = '{val}'")
 
     # Status
     m = re.search(r"status\s+(?:=|equals?|is)\s+['\"]?(\w+)['\"]?", text)
     if m:
-        val = m.group(1).strip()
+        val = _escape_sql_string(m.group(1).strip())
         clauses.append(f"SUPPLIER_TYPE = '{val}'")
 
     return " AND ".join(clauses) if clauses else None
+
+
+def _escape_sql_string(value: str) -> str:
+    """Escape single quotes in a value for safe SQL string literal embedding."""
+    return value.replace("'", "''")
