@@ -65,6 +65,49 @@ Rules:
 
 
 # ---------------------------------------------------------------------------
+# Cached client (created once per process)
+# ---------------------------------------------------------------------------
+
+_client: AzureOpenAI | None = None
+_client_endpoint: str | None = None
+
+_MAX_INPUT_LENGTH = 1000
+
+
+def _get_client() -> AzureOpenAI:
+    """Return a cached AzureOpenAI client, creating one if needed."""
+    global _client, _client_endpoint
+
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
+
+    # Recreate if endpoint changed (e.g. env var updated)
+    if _client and _client_endpoint == endpoint:
+        return _client
+
+    if api_key:
+        _client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            api_key=api_key,
+        )
+    else:
+        token_provider = get_bearer_token_provider(
+            DefaultAzureCredential(),
+            "https://cognitiveservices.azure.com/.default",
+        )
+        _client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            azure_ad_token_provider=token_provider,
+        )
+
+    _client_endpoint = endpoint
+    return _client
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -85,13 +128,22 @@ def translate_llm(nl: str) -> str:
     Raises
     ------
     ValueError
-        If required Azure OpenAI settings are missing.
+        If required Azure OpenAI settings are missing or input is invalid.
     RuntimeError
         If the LLM call fails.
     """
+    if not nl or not isinstance(nl, str):
+        raise ValueError("Query must be a non-empty string.")
+
+    nl = nl.strip()
+    if len(nl) > _MAX_INPUT_LENGTH:
+        raise ValueError(
+            f"Query is too long ({len(nl)} chars). "
+            f"Maximum is {_MAX_INPUT_LENGTH} characters."
+        )
+
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
 
     if not endpoint:
         raise ValueError(
@@ -104,16 +156,7 @@ def translate_llm(nl: str) -> str:
             "set it as an environment variable."
         )
 
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default",
-    )
-
-    client = AzureOpenAI(
-        azure_endpoint=endpoint,
-        api_version=api_version,
-        azure_ad_token_provider=token_provider,
-    )
+    client = _get_client()
 
     try:
         response = client.chat.completions.create(

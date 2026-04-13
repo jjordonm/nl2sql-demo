@@ -2,9 +2,10 @@
 
 A self-contained demo that translates **natural language** into **SQL queries**
 using an **LLM** (Azure OpenAI) by default, with a **rule-based fallback** engine,
-a Streamlit UI, and optional golden-SQL evaluation.
+a Streamlit UI with chat history and auto-visualization, a Microsoft Teams bot,
+and optional golden-SQL evaluation.
 
-> **Status:** Demo / educational project – not for production use.  
+> **Status:** Demo / educational project – not for production use.
 > All data is synthetic.  Translations may be incomplete or inaccurate.
 
 ---
@@ -12,48 +13,78 @@ a Streamlit UI, and optional golden-SQL evaluation.
 ## Architecture
 
 ```
- ┌────────────────────────────────────────────────────┐
- │                  Streamlit UI  (app.py)            │
- │                                                    │
- │  ┌──────────┐  ┌───────────────┐  ┌────────────────┐  │
- │  │ NL Input │→ │  LLM engine  │→ │ Generated SQL  │  │
- │  └──────────┘  │  (default)   │  └───────┬────────┘  │
- │               │───────────────│        │ (optional) │
- │               │ Rule-based   │        ▼            │
- │               │  (fallback)  │  ┌──────────────┐    │
- │               └───────────────┘  │   SQLite DB  │    │
- │                               │   (db.py)    │    │
- │                               └──────────────┘    │
- │                                                    │
- │  Sidebar: [Engine Toggle] [Init DB] [Run Eval]     │
- └────────────────────────────────────────────────────┘
-
- nl2sql/
-   schema.py      – Table/column definitions & helpers
-   db.py          – SQLite bootstrap & seed-data loader
-   llm_engine.py  – LLM-powered NL → SQL translator (default)
-   engine.py      – Rule-based NL → SQL translator (fallback)
-   eval.py        – Golden-SQL comparison & reporting
-
- data/
-   seed/          – CSV files loaded into SQLite
-   golden/        – JSONL file with NL→SQL reference pairs
+                         ┌─────────────────────────┐
+                         │     Microsoft Teams      │
+                         │      (Bot Framework)     │
+                         └────────────┬────────────┘
+                                      │ HTTPS
+                         ┌────────────▼────────────┐
+                         │   Azure App Service      │
+                         │   (webapp.py + bot.py)   │
+                         │   Managed Identity auth  │
+                         └────────────┬────────────┘
+                                      │
+ ┌────────────────────────────────────┐│┌──────────────────────────┐
+ │       Streamlit UI  (app.py)      │││   Azure OpenAI Service   │
+ │                                   ││└──────────────────────────┘
+ │  Chat history + Auto-viz + Eval   │├──────────┐
+ │  az login (local dev auth)        ││          │
+ └────────────────┬──────────────────┘│          │
+                  │                   │          │
+         ┌────────▼────────┐  ┌───────▼──────┐  │
+         │  LLM Engine     │  │ Rule-based   │  │
+         │  (llm_engine.py)│  │ (engine.py)  │  │
+         └────────┬────────┘  └──────┬───────┘  │
+                  └──────────┬───────┘          │
+                       ┌─────▼─────┐            │
+                       │  SQLite   │            │
+                       │ (db.py)   │            │
+                       └─────┬─────┘            │
+                       ┌─────▼─────┐            │
+                       │ visualize │            │
+                       │   .py     │            │
+                       └───────────┘            │
 ```
 
 ### Component summary
 
 | Module | Purpose |
 |--------|---------|
-| `nl2sql/schema.py` | Defines tables, columns, aliases, and join relationships. Acts as the single source of truth the engine validates against. |
+| `nl2sql/schema.py` | Defines tables, columns, aliases, and join relationships from the schema CSV. |
 | `nl2sql/db.py` | Creates the SQLite database, runs DDL, and loads seed CSVs. Provides `execute_sql()` for safe read-only queries. |
-| `nl2sql/llm_engine.py` | Sends NL + schema to Azure OpenAI Chat Completions API (AAD auth). Default engine. |
-| `nl2sql/engine.py` | Tokenises the NL input, detects tables/columns/filters/aggregations/sorting, builds a query plan, and assembles safe SQL. Fallback engine. |
-| `nl2sql/eval.py` | Loads golden examples, runs the engine, and compares results (string or result-set mode). Produces an accuracy report. |
-| `app.py` | Streamlit single-page app tying everything together. |
+| `nl2sql/llm_engine.py` | Sends NL + schema to Azure OpenAI Chat Completions API. Supports both Entra ID (managed identity / `az login`) and API key auth. |
+| `nl2sql/engine.py` | Rule-based NL to SQL translator using regex pattern matching. Fallback engine. |
+| `nl2sql/eval.py` | Golden-SQL evaluation: loads reference pairs, runs the engine, compares results. |
+| `nl2sql/visualize.py` | Suggests the best chart type (bar, line, pie, scatter, area) based on data shape and query intent. |
+| `app.py` | Streamlit chat-style app with conversation history, auto-visualization, and evaluation sidebar. |
+| `webapp.py` | aiohttp web server entry-point for the Teams bot (deployed to Azure App Service). |
+| `bot.py` | Bot Framework `ActivityHandler` that processes Teams messages, translates to SQL, returns Adaptive Cards. |
+| `function_app/teams-manifest/` | Teams app manifest template. Replace `{{MICROSOFT_APP_ID}}` with your App ID before packaging. |
 
 ---
 
-## Quick start
+## Azure resources required
+
+| Resource | Purpose | SKU / Tier |
+|----------|---------|------------|
+| **Azure OpenAI Service** or **Azure AI Foundry** | LLM for NL-to-SQL translation | Any tier with a chat deployment (e.g. GPT-4o-mini). Models can be provisioned through Azure OpenAI directly or via an Azure AI Foundry project. |
+| **App Registration** (Entra ID) | Bot identity for Bot Framework auth | Single-tenant or multi-tenant |
+| **Azure Bot** | Routes messages between Teams and the App Service | Free (F0) or Standard (S1) |
+| **Azure App Service** (Linux) | Hosts the bot web server (`webapp.py`) | B1 or higher (Python 3.11, Linux) |
+| **App Service Plan** | Compute plan for the App Service | Basic B1 (Linux) |
+
+### Required role assignments
+
+| Principal | Role | Scope | When |
+|-----------|------|-------|------|
+| App Service managed identity | **Cognitive Services OpenAI User** | Azure OpenAI resource | Using Azure OpenAI directly |
+| App Service managed identity | **Azure AI Developer** | Azure AI Foundry project | Using a model deployed via AI Foundry |
+| Your user account (local dev) | **Cognitive Services OpenAI User** | Azure OpenAI resource | Using Azure OpenAI directly |
+| Your user account (local dev) | **Azure AI Developer** | Azure AI Foundry project | Using a model deployed via AI Foundry |
+
+---
+
+## Quick start (Streamlit UI)
 
 ```bash
 # 1. Clone and enter the repo
@@ -71,11 +102,14 @@ python -m venv .venv
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure the LLM (default engine)
+# 4. Configure the LLM
 cp .env.example .env
-# Edit .env and add your Azure OpenAI settings
+# Edit .env and set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT
 
-# 5. Launch the app
+# 5. Authenticate to Azure (for Entra ID auth)
+az login
+
+# 6. Launch the app
 streamlit run app.py
 ```
 
@@ -86,17 +120,11 @@ sidebar to reset it at any time.
 
 | Mode | How it works | Requires |
 |------|-------------|----------|
-| **LLM (default)** | Sends the NL question + schema to Azure OpenAI Chat Completions API using Entra ID (AAD) | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` in `.env` + Azure login |
+| **LLM (default)** | Sends the NL question + schema to Azure OpenAI Chat Completions API | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` in `.env` + `az login` |
 | **Rule-based** | Local pattern-matching, no network calls | Nothing — works offline |
 
 The sidebar has a radio toggle to switch between engines. If Azure OpenAI
 configuration is missing, the app automatically falls back to rule-based mode.
-
-For local development, authenticate first:
-
-```bash
-az login
-```
 
 ### Environment variables
 
@@ -105,6 +133,162 @@ az login
 | `AZURE_OPENAI_ENDPOINT` | Yes (LLM mode) | — | Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_DEPLOYMENT` | Yes (LLM mode) | — | Azure OpenAI deployment name |
 | `AZURE_OPENAI_API_VERSION` | No | `2024-02-01` | Azure OpenAI API version |
+| `AZURE_OPENAI_API_KEY` | No | — | API key (fallback if Entra ID is unavailable) |
+| `MICROSOFT_APP_ID` | Yes (Teams bot) | — | Bot App Registration client ID |
+| `MICROSOFT_APP_PASSWORD` | Yes (Teams bot) | — | Bot App Registration client secret |
+| `MICROSOFT_APP_TENANT_ID` | Yes (Teams bot) | — | Azure AD tenant ID (for single-tenant bots) |
+
+---
+
+## Features
+
+### Chat history
+
+The Streamlit UI uses a conversational chat interface (`st.chat_input` + `st.chat_message`). All questions and responses are stored in `st.session_state` and persist across reruns within the same browser session. Use the **Clear history** button in the sidebar to reset.
+
+### Auto-visualization
+
+When **Auto-visualize results** is enabled (default), the app analyzes each query result and automatically renders the most appropriate chart:
+
+| Chart type | When it's used |
+|-----------|----------------|
+| **Bar** | Categorical grouping with numeric values (e.g. "total value by plant") |
+| **Pie** | Small number of categories with distribution keywords (e.g. "breakdown by vendor") |
+| **Line** | Time-series data with trend keywords (e.g. "orders over time") |
+| **Scatter** | Two numeric columns with many rows |
+| **Area** | Time-series with area-style keywords |
+
+The logic lives in `nl2sql/visualize.py` and uses heuristics based on column types, row count, and NL query keywords.
+
+### Microsoft Teams bot
+
+The bot is deployed as an Azure App Service running an aiohttp web server (`webapp.py` + `bot.py`). Users can chat with the NL2SQL agent directly in Microsoft Teams. The bot returns results as Adaptive Cards with SQL, data tables, and visualization suggestions.
+
+#### Bot commands
+
+| Command | Description |
+|---------|-------------|
+| *(any question)* | Translates to SQL, executes, and returns results as an Adaptive Card |
+| `help` | Shows available commands and example queries |
+| `history` | Shows recent queries for the conversation |
+| `clear history` | Clears conversation history |
+
+---
+
+## Teams bot deployment
+
+### Prerequisites
+
+1. An **App Registration** in Entra ID (Azure AD) with a client secret
+2. An **Azure Bot** resource linked to the App Registration
+3. An **Azure App Service** (Linux, Python 3.11) with system-assigned managed identity
+4. The managed identity granted **Cognitive Services OpenAI User** on your Azure OpenAI resource
+
+### Step 1 — Create the App Registration
+
+1. Azure Portal → **App registrations** → **New registration**
+2. Name: e.g. `NL2SQL Bot`
+3. Supported account types: **Single tenant** (or multi-tenant)
+4. Click **Register**
+5. Note the **Application (client) ID** and **Directory (tenant) ID**
+6. Go to **Certificates & secrets** → **New client secret** → copy the **Value**
+
+### Step 2 — Create the Azure Bot
+
+1. Azure Portal → **Create a resource** → search **Azure Bot**
+2. Bot handle: e.g. `nl2sql-teams-bot`
+3. Type of App: match your App Registration (Single Tenant / Multi Tenant)
+4. Use existing app registration: paste your **App ID**
+5. Click **Create**
+6. Go to the bot → **Channels** → click **Microsoft Teams** → **Apply**
+
+### Step 3 — Create and deploy the App Service
+
+```bash
+# Create an App Service Plan (Linux)
+az appservice plan create \
+  --name nl2sql-bot-plan \
+  --resource-group <your-rg> \
+  --location <region> \
+  --sku B1 \
+  --is-linux
+
+# Create the Web App
+az webapp create \
+  --name <your-app-name> \
+  --resource-group <your-rg> \
+  --plan nl2sql-bot-plan \
+  --runtime "PYTHON:3.11"
+
+# Enable managed identity
+az webapp identity assign \
+  --name <your-app-name> \
+  --resource-group <your-rg>
+
+# Set the startup command
+az webapp config set \
+  --name <your-app-name> \
+  --resource-group <your-rg> \
+  --startup-file "python webapp.py"
+
+# Set environment variables
+az webapp config appsettings set \
+  --name <your-app-name> \
+  --resource-group <your-rg> \
+  --settings \
+    MICROSOFT_APP_ID=<your-app-id> \
+    MICROSOFT_APP_PASSWORD=<your-client-secret> \
+    MICROSOFT_APP_TENANT_ID=<your-tenant-id> \
+    AZURE_OPENAI_ENDPOINT=<your-openai-endpoint> \
+    AZURE_OPENAI_DEPLOYMENT=<your-deployment-name> \
+    WEBSITES_PORT=8000 \
+    WEBSITES_CONTAINER_START_TIME_LIMIT=600
+
+# Deploy the code
+az webapp up \
+  --name <your-app-name> \
+  --resource-group <your-rg> \
+  --runtime "PYTHON:3.11"
+```
+
+### Step 4 — Grant the managed identity access to Azure OpenAI
+
+In the Azure Portal, go to your **Azure OpenAI resource** → **Access control (IAM)** → **Add role assignment**:
+
+- Role: **Cognitive Services OpenAI User**
+- Assign access to: **Managed identity** → **App Service** → select your app
+- Click **Review + assign**
+
+### Step 5 — Set the messaging endpoint
+
+In the **Azure Bot** resource → **Configuration** → set **Messaging endpoint** to:
+
+```
+https://<your-app-name>.azurewebsites.net/api/messages
+```
+
+### Step 6 — Install the bot in Teams
+
+#### Option A: Sideload (development)
+
+1. Copy `function_app/teams-manifest/manifest.json` and replace `{{MICROSOFT_APP_ID}}` with your actual App ID
+2. Add two icon files to the same folder:
+   - `color.png` — 192×192 px full-color icon
+   - `outline.png` — 32×32 px transparent-background white outline icon
+3. Zip the three files (manifest.json + color.png + outline.png) into a single ZIP — files must be at the root of the ZIP, not inside a subfolder
+4. In Teams → **Apps** → **Manage your apps** → **Upload a custom app** → select the ZIP file
+
+#### Option B: Admin deployment (organization-wide)
+
+1. Prepare the ZIP as described above
+2. Go to [Teams Admin Center](https://admin.teams.microsoft.com) → **Teams apps** → **Manage apps** → **Upload new app**
+3. Upload the ZIP file
+4. Set app policies to control which users can access the bot
+
+#### Option C: Test in Azure Portal
+
+1. Go to the **Azure Bot** resource → **Test in Web Chat**
+2. Type a query to verify the bot responds before deploying to Teams
 
 ---
 
@@ -154,7 +338,7 @@ EDW_MATL_LOC_DEMAND_INFO   (24 columns) - Material demand information
 
 Plus 24 SAP raw tables (EKKO, EKPO, MARA, MARC, LFA1, etc.).
 
-Seed data: 10 plants, 30 POs, 40 inventory snapshots, 25 demand records - all synthetic dummy values.
+Seed data: 10 plants, 30 POs, 40 inventory snapshots, 25 demand records — all synthetic dummy values.
 
 ---
 
@@ -163,14 +347,10 @@ Seed data: 10 plants, 30 POs, 40 inventory snapshots, 25 demand records - all sy
 ### Configuring the LLM engine
 
 The LLM engine uses the `openai` Python package with the AzureOpenAI client.
-Set these variables:
+Authentication order:
 
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_DEPLOYMENT`
-- Optional: `AZURE_OPENAI_API_VERSION`
-
-Authentication is via Microsoft Entra ID (AAD) using `DefaultAzureCredential`
-from `azure-identity`.
+1. If `AZURE_OPENAI_API_KEY` is set → uses API key auth
+2. Otherwise → uses `DefaultAzureCredential` (managed identity in Azure, `az login` locally)
 
 ### Customising the LLM prompt
 
@@ -180,7 +360,7 @@ instructions, add few-shot examples, or change the output format.
 ### Updating the schema
 
 1. Replace `data/snowflake_table_columns.csv` with an updated export.
-2. The schema is parsed automatically at import time - no code changes needed.
+2. The schema is parsed automatically at import time — no code changes needed.
 3. Add join relationships in `nl2sql/schema.py` if applicable.
 4. Regenerate seed data: `python generate_seed_data.py`
 5. Re-initialise: click **Initialize DB** or call `init_db(force=True)`.
@@ -194,14 +374,6 @@ instructions, add few-shot examples, or change the output format.
    function and update the `_QueryPlan`.
 4. Add corresponding golden examples in `data/golden/golden.sql.jsonl` and
    run `pytest` to verify.
-
-### Extending the schema
-
-1. Update `data/snowflake_table_columns.csv` with the new table/column metadata.
-2. Add join relationships in `JOIN_RELATIONS` in `nl2sql/schema.py` if applicable.
-3. Add seed data generation logic in `generate_seed_data.py`.
-4. Run `python generate_seed_data.py` to create CSVs.
-5. Re-initialise: click **Initialize DB** or call `init_db(force=True)`.
 
 ---
 
@@ -217,7 +389,7 @@ instructions, add few-shot examples, or change the output format.
   a small amount of tokens.
 - **Synthetic data** – All names, emails, and transactions are fake. No
   personally identifiable information (PII) is used.
-- **No authentication / authorisation** – The app exposes a raw SQL
+- **No authentication / authorisation** – The Streamlit app exposes a raw SQL
   execution path (read-only). Do not deploy on an untrusted network without
   additional safeguards.
 - **SQL injection mitigation** – Table and column names are strictly
